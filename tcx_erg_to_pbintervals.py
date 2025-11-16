@@ -46,35 +46,55 @@ def parse_erg_file(erg_file):
     return power_profile
 
 def get_power_at_time(power_profile, time_sec, use_end_value=False):
-    """Get the power at a specific time, interpolating if necessary
-    
+    """Get the power at a specific time, with tolerance for timing mismatches
+
     use_end_value: If True, get power AFTER a transition (for interval starts)
                    If False, get power BEFORE a transition (for interval ends)
+
+    Note: ERG files from Xert often have transitions that are 0.2-1s off from TCX
+    boundaries due to rounding. We use a 2-second tolerance to handle this.
     """
-    # Check for exact matches first (handles duplicate timestamps)
-    exact_matches = [(t, p) for t, p in power_profile if abs(t - time_sec) < 0.01]
-    if exact_matches:
-        if use_end_value:
-            # For interval start, use the LAST value at this time (after transition)
-            return exact_matches[-1][1]
+    TOLERANCE = 2.0  # seconds - tolerance for "close enough" matches
+
+    # First, check for exact or very close matches
+    close_matches = [(t, p) for t, p in power_profile if abs(t - time_sec) < TOLERANCE]
+
+    if close_matches:
+        # Find the closest match(es)
+        closest_time = min(close_matches, key=lambda x: abs(x[0] - time_sec))[0]
+        matches_at_closest = [(t, p) for t, p in close_matches if abs(t - closest_time) < 0.01]
+
+        if len(matches_at_closest) > 1:
+            # Multiple values at this time = transition point
+            if use_end_value:
+                # For interval start, use the LAST value (after transition)
+                return matches_at_closest[-1][1]
+            else:
+                # For interval end, use the FIRST value (before transition)
+                return matches_at_closest[0][1]
         else:
-            # For interval end, use the FIRST value at this time (before transition)
-            return exact_matches[0][1]
-    
-    # No exact match, need to interpolate
+            # Single value - just use it
+            return matches_at_closest[0][1]
+
+    # No close match - need to interpolate
+    # But be careful not to interpolate across a transition (duplicate timestamp)
     for i in range(len(power_profile) - 1):
         t1, p1 = power_profile[i]
         t2, p2 = power_profile[i + 1]
-        
+
+        # Skip if this is a transition (duplicate timestamp)
+        if abs(t2 - t1) < 0.01:
+            continue
+
         if t1 < time_sec < t2:
-            # Interpolate
+            # Safe to interpolate between these points
             ratio = (time_sec - t1) / (t2 - t1)
             return p1 + ratio * (p2 - p1)
-    
+
     # If we're past the end, return the last power
     if time_sec >= power_profile[-1][0]:
         return power_profile[-1][1]
-    
+
     # If we're before the start, return the first power
     return power_profile[0][1]
 
