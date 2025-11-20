@@ -16,19 +16,14 @@ You're an XERT user who wants to:
 
 ## Quick Start
 
-1. Create a `.env` file with your FTP:
-```bash
-echo "FTP=304" > .env
-```
+1. Export your workout from Xert Online in **both TCX and ERG formats**
 
-2. Export your workout from Xert Online in **both TCX and ERG formats**
-
-3. Run the converter:
+2. Run the converter:
 ```bash
 python3 tcx_erg_to_pbintervals.py "workout.tcx" "workout.erg" -o output.csv
 ```
 
-4. Import the CSV into [PB Intervals](https://apps.apple.com/app/pb-intervals/id1582351337) app on your iPhone (paid app with CSV import feature)
+3. Import the CSV into [PB Intervals](https://apps.apple.com/app/pb-intervals/id1582351337) app on your iPhone (paid app with CSV import feature)
 
 ## Requirements
 
@@ -45,36 +40,31 @@ python3 tcx_erg_to_pbintervals.py TCX_FILE ERG_FILE [options]
 Arguments:
   TCX_FILE    The .tcx file exported from Xert Online
   ERG_FILE    The .erg file exported from Xert Online
-  
+
 Options:
   -o OUTPUT   Output CSV filename (default: workout_pbintervals.csv)
-  -f FTP      Override FTP from .env file (optional)
+  -f FTP      Override FTP for power zone colors (optional)
 ```
 
 ### FTP Configuration
 
-The script requires your FTP (Functional Threshold Power) to determine power zone colors. You can provide it in two ways:
+The script automatically extracts your FTP (Functional Threshold Power) from the ERG file to determine power zone colors. Xert includes the FTP value it used when generating the workout.
 
-1. **Recommended: Create a `.env` file** (copy from `.env.example`):
-```bash
-cp .env.example .env
-# Edit .env and set your FTP value
-```
+If you want to use a different FTP value for zone color coding (e.g., if your FTP has changed since Xert generated the workout), you can override it:
 
-2. **Or override with -f flag**:
 ```bash
 python3 tcx_erg_to_pbintervals.py "workout.tcx" "workout.erg" -f 304
 ```
 
-The `-f` flag always takes precedence over the `.env` file value.
+**Note**: The FTP value only affects the color coding of intervals. The actual power targets in the workout come directly from the ERG file and are not affected by the FTP setting.
 
 ### Examples
 
 ```bash
-# Using FTP from .env file
+# Basic usage - FTP extracted automatically from ERG file
 python3 tcx_erg_to_pbintervals.py "VIRTUAL - Ellis.tcx" "VIRTUAL - Ellis.erg" -o ellis.csv
 
-# Override FTP for this workout
+# Override FTP for different zone colors
 python3 tcx_erg_to_pbintervals.py "VIRTUAL - Ellis.tcx" "VIRTUAL - Ellis.erg" -o ellis.csv -f 320
 ```
 
@@ -101,13 +91,14 @@ This eliminates the need to manually specify filenames and makes it easy to quic
 The converter combines data from two Xert export formats:
 
 - **TCX file**: Provides interval names and durations
-- **ERG file**: Provides accurate power targets throughout the workout
+- **ERG file**: Provides FTP and accurate power targets throughout the workout
 
 For each interval, the script:
-1. Extracts the power at the start and end from the ERG data
-2. If power changes <10%, shows a single value (e.g., `[323W]`)
-3. If power changes >10%, shows the ramp (e.g., `[82-205W, avg:144W]`)
-4. Colors intervals based on power zones relative to your FTP
+1. Extracts your FTP from the ERG file header for zone color coding
+2. Extracts the power at the start and end from the ERG data
+3. If power changes <10%, shows a single value (e.g., `[323W]`)
+4. If power changes >10%, shows the ramp (e.g., `[82-205W, avg:144W]`)
+5. Colors intervals based on power zones relative to your FTP
 
 ## Power Zone Colors
 

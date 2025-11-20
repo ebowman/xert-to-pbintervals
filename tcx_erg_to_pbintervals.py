@@ -8,7 +8,6 @@ No heuristics - just shows the power progression for each interval
 import xml.etree.ElementTree as ET
 import csv
 import sys
-import os
 from datetime import timedelta
 import argparse
 
@@ -21,13 +20,22 @@ def seconds_to_hhmmss(seconds):
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 def parse_erg_file(erg_file):
-    """Parse ERG file and extract power profile"""
+    """Parse ERG file and extract FTP and power profile"""
     power_profile = []
+    ftp = None
     in_data_section = False
-    
+
     with open(erg_file, 'r', encoding='utf-8-sig') as f:
         for line in f:
             line = line.strip()
+
+            # Extract FTP from header
+            if line.startswith('FTP='):
+                try:
+                    ftp = float(line.split('=')[1])
+                except (ValueError, IndexError):
+                    pass
+
             if line == '[COURSE DATA]':
                 in_data_section = True
                 continue
@@ -42,8 +50,8 @@ def parse_erg_file(erg_file):
                         power_profile.append((minutes * 60, watts))  # Convert to seconds
                     except ValueError:
                         continue
-    
-    return power_profile
+
+    return ftp, power_profile
 
 def get_power_at_time(power_profile, time_sec, use_end_value=False):
     """Get the power at a specific time, with tolerance for timing mismatches
@@ -279,61 +287,43 @@ def create_pbintervals_csv(workout_name, steps, power_profile, output_file, ftp)
     total_duration = sum(step['duration'] for step in steps)
     print(f"Total duration: {seconds_to_hhmmss(total_duration)}")
 
-def load_ftp_from_env():
-    """Load FTP from .env file if it exists"""
-    env_file = '.env'
-    if os.path.exists(env_file):
-        with open(env_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    if '=' in line:
-                        key, value = line.split('=', 1)
-                        if key.strip() == 'FTP':
-                            try:
-                                return int(value.strip())
-                            except ValueError:
-                                pass
-    return None
 
 def main():
     parser = argparse.ArgumentParser(description='Convert Xert TCX + ERG workout to PB Intervals CSV')
     parser.add_argument('tcx_file', help='Input TCX file')
     parser.add_argument('erg_file', help='Input ERG file')
     parser.add_argument('-o', '--output', help='Output CSV file', default=None)
-    parser.add_argument('-f', '--ftp', type=int, help='Override FTP value from .env file', default=None)
-    
+    parser.add_argument('-f', '--ftp', type=float, help='Override FTP value from ERG file for zone colors', default=None)
+
     args = parser.parse_args()
-    
-    # Get FTP from .env or command line
-    ftp = args.ftp
-    if ftp is None:
-        ftp = load_ftp_from_env()
-    
-    if ftp is None:
-        print("Error: FTP value is required. Either:", file=sys.stderr)
-        print("  1. Create a .env file with FTP=YOUR_VALUE", file=sys.stderr)
-        print("  2. Use the -f flag to specify FTP", file=sys.stderr)
-        sys.exit(1)
-    
+
     # Set output filename if not specified
     if args.output is None:
         args.output = args.tcx_file.replace('.tcx', '_pbintervals.csv')
-    
+
     try:
         # Parse TCX file for structure
         workout_name, steps = parse_tcx_workout(args.tcx_file)
-        
-        # Parse ERG file for power data
-        power_profile = parse_erg_file(args.erg_file)
-        
+
+        # Parse ERG file for FTP and power data
+        ftp_from_erg, power_profile = parse_erg_file(args.erg_file)
+
         if not power_profile:
             print("Error: No power data found in ERG file", file=sys.stderr)
             sys.exit(1)
-        
+
+        # Use command-line FTP if provided, otherwise use ERG FTP
+        ftp = args.ftp if args.ftp is not None else ftp_from_erg
+
+        if ftp is None:
+            print("Error: No FTP value found in ERG file. Use -f flag to specify FTP for zone colors.", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"Using FTP: {ftp:.1f}W (for zone color coding)")
+
         # Create PB Intervals CSV
         create_pbintervals_csv(workout_name, steps, power_profile, args.output, ftp)
-        
+
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         import traceback
